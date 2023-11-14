@@ -669,7 +669,13 @@ class Step(ABC):
             file structure. For internal use only.
         """
         # 0. Create Directories
+        target_pdk_dirname = "./pdk"
+        target_design_files_dirname = "./design_files"
         mkdirp(target_dir)
+        if include_pdk:
+            mkdirp(os.path.join(target_dir, target_pdk_dirname))
+        if not _flatten:
+            mkdirp(os.path.join(target_dir, target_design_files_dirname))
 
         files_path = target_dir
         if not _flatten:
@@ -678,12 +684,30 @@ class Step(ABC):
         pdk_path = os.path.join(self.config["PDK_ROOT"], self.config["PDK"], "")
 
         def visitor(x: Any) -> Any:
-            nonlocal files_path, include_pdk, pdk_path
+            nonlocal files_path, include_pdk, pdk_path, target_pdk_dirname, target_design_files_dirname
             if not isinstance(x, Path):
+                return x
+            if x == Path._dummy_path:
                 return x
 
             if not include_pdk and x.startswith(pdk_path):
                 return x.replace(pdk_path, "pdk_dir::")
+
+            pdk_root = os.path.join(self.config["PDK_ROOT"])
+            if x.startswith(pdk_root):
+                target_path_relative = x.replace(pdk_root, target_pdk_dirname)
+            else:
+                target_path_relative = os.path.join(
+                    target_design_files_dirname, os.path.basename(str(x))
+                )
+
+            if not _flatten:
+                target_path_full = os.path.join(target_dir, target_path_relative)
+                mkdirp(os.path.dirname(target_path_full))
+                if not os.path.isdir(x):
+                    print(x, target_path_full)
+                    shutil.copy(x, target_path_full)
+                return target_path_relative
 
             target_relpath = os.path.join(".", "files", x[1:])
             target_abspath = os.path.join(files_path, x[1:])
@@ -713,12 +737,15 @@ class Step(ABC):
                 if not _flatten:
                     mkdirp(target_abspath)
             else:
+                print(x, target_abspath)
                 shutil.copy(x, target_abspath)
 
             return Path(target_relpath)
 
         # 1. Config
         dumpable_config = copy_recursive(self.config, translator=visitor)
+        if _flatten and include_pdk:
+            dumpable_config["PDK_ROOT"] = "./"
         dumpable_config["meta"] = {
             "openlane_version": __version__,
             "step": self.__class__.id,
@@ -1054,6 +1081,7 @@ class Step(ABC):
                 err(f"Log file: '{os.path.relpath(log_path)}'")
             raise subprocess.CalledProcessError(returncode, process.args)
 
+        debug(f"{log_path}")
         return generated_metrics
 
     @protected

@@ -36,7 +36,8 @@ from openlane.state.state import InvalidState
 
 
 from .flow import Flow
-from ..common import set_tpe, get_opdks_rev
+from ..common import set_tpe
+from ..common.cli import pdk_scl_cb
 from ..logging import set_log_level, err, LogLevelsDict
 from ..state import State
 
@@ -120,28 +121,6 @@ def use_volare_cb(
 ):
     ctx.obj = ctx.obj or {}
     ctx.obj["use_volare"] = value
-
-
-def pdk_scl_cb(
-    ctx: Context,
-    param: Parameter,
-    value: Optional[str],
-):
-    if param.name is None:
-        return
-
-    values = ctx.params.copy()
-    values[param.name] = value
-    if "pdk" in values and "scl" in values:
-        pdk = values["pdk"]
-        pdk_family = pdk[:-1]
-        if ctx.obj and ctx.obj.get("use_volare"):
-            import volare
-
-            pdk_root = volare.get_volare_home(values["pdk_root"])
-
-            volare.enable(pdk_root, pdk_family, get_opdks_rev())
-    return value
 
 
 def cloup_flow_opts(

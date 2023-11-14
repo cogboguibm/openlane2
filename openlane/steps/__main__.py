@@ -31,7 +31,7 @@ from cloup import (
 from .step import Step, StepError, StepException
 from ..logging import info, err, warn
 from ..__version__ import __version__
-from ..common.cli import formatter_settings
+from ..common.cli import formatter_settings, pdk_scl_cb
 from ..common import mkdirp, Toolbox, get_openlane_root
 
 
@@ -50,6 +50,7 @@ def load_step_from_inputs(
     id: Optional[str],
     config: str,
     state_in: str,
+    pdk_root: str = ".",
 ) -> Step:
     if id is None:
         id = extract_step_id(ctx, config)
@@ -68,6 +69,7 @@ def load_step_from_inputs(
     return Target.load(
         config=config,
         state_in=state_in,
+        pdk_root=pdk_root,
     )
 
 
@@ -116,8 +118,35 @@ o = partial(option, show_default=True)
     ),
     required=False,
 )
+@o(
+    "-p",
+    "--pdk",
+    type=str,
+    default=os.environ.pop("PDK", "sky130A"),
+    help="The process design kit to use.",
+    callback=pdk_scl_cb,
+)
+@o(
+    "-p",
+    "--pdk",
+    type=str,
+    default=os.environ.pop("PDK", "sky130A"),
+    help="The process design kit to use.",
+    callback=pdk_scl_cb,
+)
+@o(
+    "--pdk-root",
+    type=Path(
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+    ),
+    is_eager=True,
+    default=".",
+    help="Override volare PDK root folder. Required if Volare is not installed.",
+)
 @pass_context
-def run(ctx, output, state_in, config, id):
+def run(ctx, pdk, pdk_root, output, state_in, config, id):
     """
     Runs a step using a step-specific configuration object and an input state.
 
@@ -125,7 +154,7 @@ def run(ctx, output, state_in, config, id):
     filesystem-independent reproducibles.
     """
 
-    step = load_step_from_inputs(ctx, id, config, state_in)
+    step = load_step_from_inputs(ctx, id, config, state_in, pdk_root)
 
     if step.config.meta.openlane_version != __version__:
         warn(
@@ -254,6 +283,8 @@ def eject(ctx, output, state_in, config, id):
 
     canon_scripts_dir = os.path.join(get_openlane_root(), "scripts")
     target_scripts_dir = os.path.join(".", "scripts")
+    print(canon_scripts_dir)
+    print(target_scripts_dir)
 
     try:
         shutil.rmtree(target_scripts_dir)
@@ -288,13 +319,18 @@ def eject(ctx, output, state_in, config, id):
             f.write(found_stdin_data)
         cat_in = "cat STDIN | "
 
+    found_cmd_filtered = []
+    for cmd in found_cmd:
+        cmd = cmd.replace(canon_scripts_dir, target_scripts_dir)
+        found_cmd_filtered.append(cmd)
+
     with open(output, "w", encoding="utf8") as f:
         f.write("#!/bin/sh\n")
         for key, value in filtered_env.items():
             f.write(f"export {key}={shlex.quote(str(value))}\n")
         f.write("\n")
         f.write(cat_in)
-        f.write(shlex.join([str(e) for e in found_cmd]))
+        f.write(shlex.join([str(e) for e in found_cmd_filtered]))
         f.write("\n")
 
     if hasattr(os, "chmod"):

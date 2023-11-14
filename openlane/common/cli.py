@@ -11,11 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Optional
+from click import Parameter
 from cloup import (
     HelpFormatter,
     HelpTheme,
     Style,
+    Context,
 )
+from .misc import get_opdks_rev
 
 formatter_settings = HelpFormatter.settings(
     theme=HelpTheme(
@@ -25,3 +29,25 @@ formatter_settings = HelpFormatter.settings(
         col1=Style(fg="bright_yellow"),
     )
 )
+
+
+def pdk_scl_cb(
+    ctx: Context,
+    param: Parameter,
+    value: Optional[str],
+):
+    if param.name is None:
+        return
+
+    values = ctx.params.copy()
+    values[param.name] = value
+    if "pdk" in values and "scl" in values:
+        pdk = values["pdk"]
+        pdk_family = pdk[:-1]
+        if ctx.obj and ctx.obj.get("use_volare"):
+            import volare
+
+            pdk_root = volare.get_volare_home(values["pdk_root"])
+
+            volare.enable(pdk_root, pdk_family, get_opdks_rev())
+    return value
